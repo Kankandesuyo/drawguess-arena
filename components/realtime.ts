@@ -1,15 +1,225 @@
-'use client';
-import {io} from 'socket.io-client';
-export interface RealtimeSocket {connected:boolean;on(event:string,fn:(...args:any[])=>void):RealtimeSocket;emit(event:string,data?:any,ack?:(data:any)=>void):RealtimeSocket;connect():RealtimeSocket;disconnect():RealtimeSocket;}
+"use client";
+import { io } from "socket.io-client";
+export interface RealtimeSocket {
+  connected: boolean;
+  on(event: string, fn: (...args: any[]) => void): RealtimeSocket;
+  emit(event: string, data?: any, ack?: (data: any) => void): RealtimeSocket;
+  connect(): RealtimeSocket;
+  disconnect(): RealtimeSocket;
+}
 // Keep UI events identical for the Node.js and Cloudflare runtimes.
-export function createRealtimeSocket():RealtimeSocket{return process.env.NEXT_PUBLIC_REALTIME_TRANSPORT==='cloudflare'?new CloudflareSocket():io({autoConnect:false});}
+export function createRealtimeSocket(): RealtimeSocket {
+  return process.env.NEXT_PUBLIC_REALTIME_TRANSPORT === "cloudflare"
+    ? new CloudflareSocket()
+    : io({ autoConnect: false });
+}
 class CloudflareSocket implements RealtimeSocket {
- connected=false;private stopped=false;private ws:WebSocket|null=null;private roomCode='';private listeners=new Map<string,((...args:any[])=>void)[]>();private callbacks=new Map<string,(data:any)=>void>();private retry:ReturnType<typeof setTimeout>|null=null;
- on(event:string,fn:(...args:any[])=>void){this.listeners.set(event,[...(this.listeners.get(event)||[]),fn]);return this;}
- private fire(event:string,data?:any){for(const fn of this.listeners.get(event)||[])fn(data);}
- connect(){this.stopped=false;void fetch('/api/health',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('服务器暂时不可用');if(!this.stopped){this.connected=true;this.fire('connect');}}).catch(()=>{if(!this.stopped)this.retry=setTimeout(()=>this.connect(),2000);});return this;}
- disconnect(){this.stopped=true;this.connected=false;if(this.retry)clearTimeout(this.retry);const ws=this.ws;this.ws=null;ws?.close();for(const fn of this.callbacks.values())fn({ok:false,error:'连接已断开'});this.callbacks.clear();return this;}
- private open(code:string,announce=false):Promise<void>{if(this.ws?.readyState===WebSocket.OPEN&&code===this.roomCode)return Promise.resolve();const old=this.ws;this.ws=null;old?.close();this.roomCode=code;return new Promise((resolve,reject)=>{const u=new URL(`/api/rooms/${code}/ws`,location.origin);u.protocol=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(u);this.ws=ws;const timeout=setTimeout(()=>{reject(Error('连接超时，请重试'));ws.close();},10000);ws.onopen=()=>{clearTimeout(timeout);if(this.ws!==ws){ws.close();return;}this.connected=true;if(announce)this.fire('connect');resolve();};ws.onerror=()=>{clearTimeout(timeout);reject(Error('网络连接失败，请重试'));};ws.onmessage=e=>{try{const p=JSON.parse(e.data);if(p.event==='ack'){const cb=this.callbacks.get(p.id);this.callbacks.delete(p.id);cb?.(p.data);}else this.fire(p.event,p.data);}catch{this.fire('notice','收到了无法识别的消息，请刷新重试');}};ws.onclose=()=>{clearTimeout(timeout);if(this.ws!==ws||this.stopped)return;this.ws=null;this.connected=false;this.fire('disconnect');this.retry=setTimeout(()=>void this.open(code,true).catch(()=>{}),1500);};});}
- private send(event:string,data:any,ack?:((data:any)=>void)){const id=crypto.randomUUID();if(!this.ws||this.ws.readyState!==WebSocket.OPEN){ack?.({ok:false,error:'连接中，请稍候'});return;}if(ack){const timeout=setTimeout(()=>{if(this.callbacks.delete(id))ack({ok:false,error:'服务器响应超时，请重试'});},10000);this.callbacks.set(id,result=>{clearTimeout(timeout);ack(result);});}this.ws.send(JSON.stringify({id,event,data}));}
- emit(event:string,data:any={},ack?:((data:any)=>void)){void(async()=>{try{if(event==='create'){const response=await fetch('/api/rooms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const a=await response.json();if(!a.ok){ack?.(a);return;}await this.open(a.code);this.send('join',{...data,code:a.code,token:a.token},ack);return;}if(event==='join'){if(!/^[A-F0-9]{6}$/.test(String(data.code).toUpperCase()))throw Error('请输入正确的 6 位房间码');await this.open(String(data.code).toUpperCase());this.send('join',data,ack);return;}if(event==='leave'){this.send(event,data,a=>{if(a.ok){const ws=this.ws;this.ws=null;ws?.close();}ack?.(a);});return;}this.send(event,data,ack);}catch(e){const a={ok:false,error:e instanceof Error?e.message:'操作失败'};if(ack)ack(a);else this.fire('notice',a.error);}})();return this;}
+  connected = false;
+  private stopped = false;
+  private ws: WebSocket | null = null;
+  private roomCode = "";
+  private joined = false;
+  private listeners = new Map<string, ((...args: any[]) => void)[]>();
+  private callbacks = new Map<string, (data: any) => void>();
+  private retry: ReturnType<typeof setTimeout> | null = null;
+  on(event: string, fn: (...args: any[]) => void) {
+    this.listeners.set(event, [...(this.listeners.get(event) || []), fn]);
+    return this;
+  }
+  private fire(event: string, data?: any) {
+    for (const fn of this.listeners.get(event) || []) fn(data);
+  }
+  private async json(path: string, init: RequestInit = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(path, {
+        ...init,
+        signal: controller.signal,
+      });
+      if (!response.headers.get("Content-Type")?.includes("application/json"))
+        throw Error("网络暂时无法连接游戏服务，请重试");
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || "服务器暂时不可用，请重试");
+      return data;
+    } catch (error) {
+      if (controller.signal.aborted) throw Error("网络连接超时，请重试");
+      if (error instanceof TypeError)
+        throw Error("网络连接失败，请检查网络后重试");
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  connect() {
+    this.stopped = false;
+    void this.json("/api/health", { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw Error("服务器暂时不可用");
+        if (!this.stopped) {
+          this.connected = true;
+          this.fire("connect");
+        }
+      })
+      .catch(() => {
+        if (!this.stopped) this.retry = setTimeout(() => this.connect(), 2000);
+      });
+    return this;
+  }
+  disconnect() {
+    this.stopped = true;
+    this.connected = false;
+    this.joined = false;
+    if (this.retry) clearTimeout(this.retry);
+    const ws = this.ws;
+    this.ws = null;
+    ws?.close();
+    for (const fn of this.callbacks.values())
+      fn({ ok: false, error: "连接已断开" });
+    this.callbacks.clear();
+    return this;
+  }
+  private open(code: string, announce = false): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN && code === this.roomCode)
+      return Promise.resolve();
+    if (this.retry) {
+      clearTimeout(this.retry);
+      this.retry = null;
+    }
+    const old = this.ws;
+    this.ws = null;
+    old?.close();
+    this.roomCode = code;
+    return new Promise((resolve, reject) => {
+      const u = new URL(`/api/rooms/${code}/ws`, location.origin);
+      u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(u);
+      let opened = false;
+      this.ws = ws;
+      const timeout = setTimeout(() => {
+        reject(Error("连接超时，请重试"));
+        ws.close();
+      }, 10000);
+      ws.onopen = () => {
+        opened = true;
+        clearTimeout(timeout);
+        if (this.ws !== ws) {
+          ws.close();
+          return;
+        }
+        this.connected = true;
+        if (announce) this.fire("connect");
+        resolve();
+      };
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        reject(Error("网络连接失败，请重试"));
+      };
+      ws.onmessage = (e) => {
+        try {
+          const p = JSON.parse(e.data);
+          if (p.event === "ack") {
+            const cb = this.callbacks.get(p.id);
+            this.callbacks.delete(p.id);
+            cb?.(p.data);
+          } else this.fire(p.event, p.data);
+        } catch {
+          this.fire("notice", "收到了无法识别的消息，请刷新重试");
+        }
+      };
+      ws.onclose = () => {
+        clearTimeout(timeout);
+        if (!opened) reject(Error("房间连接失败，请检查房间码后重试"));
+        if (this.ws !== ws || this.stopped) return;
+        this.ws = null;
+        this.connected = false;
+        this.fire("disconnect");
+        for (const cb of this.callbacks.values())
+          cb({ ok: false, error: "连接已断开，请重试" });
+        this.callbacks.clear();
+        if (this.joined)
+          this.retry = setTimeout(
+            () => void this.open(code, true).catch(() => {}),
+            1500,
+          );
+        else this.connect();
+      };
+    });
+  }
+  private send(event: string, data: any, ack?: (data: any) => void) {
+    const id = crypto.randomUUID();
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      ack?.({ ok: false, error: "连接中，请稍候" });
+      return;
+    }
+    if (ack) {
+      const timeout = setTimeout(() => {
+        if (this.callbacks.delete(id))
+          ack({ ok: false, error: "服务器响应超时，请重试" });
+      }, 10000);
+      this.callbacks.set(id, (result) => {
+        clearTimeout(timeout);
+        ack(result);
+      });
+    }
+    this.ws.send(JSON.stringify({ id, event, data }));
+  }
+  emit(event: string, data: any = {}, ack?: (data: any) => void) {
+    void (async () => {
+      try {
+        if (event === "create") {
+          const a = await this.json("/api/rooms", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+          if (!a.ok) {
+            ack?.(a);
+            return;
+          }
+          await this.open(a.code);
+          this.send(
+            "join",
+            { ...data, code: a.code, token: a.token },
+            (result) => {
+              this.joined = result.ok;
+              ack?.(result);
+            },
+          );
+          return;
+        }
+        if (event === "join") {
+          if (!/^[A-F0-9]{6}$/.test(String(data.code).toUpperCase()))
+            throw Error("请输入正确的 6 位房间码");
+          await this.open(String(data.code).toUpperCase());
+          this.send("join", data, (result) => {
+            this.joined = result.ok;
+            ack?.(result);
+          });
+          return;
+        }
+        if (event === "leave") {
+          this.send(event, data, (a) => {
+            if (a.ok) {
+              this.joined = false;
+              const ws = this.ws;
+              this.ws = null;
+              ws?.close();
+            }
+            ack?.(a);
+          });
+          return;
+        }
+        this.send(event, data, ack);
+      } catch (e) {
+        const a = {
+          ok: false,
+          error: e instanceof Error ? e.message : "操作失败",
+        };
+        if (ack) ack(a);
+        else this.fire("notice", a.error);
+      }
+    })();
+    return this;
+  }
 }
