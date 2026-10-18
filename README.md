@@ -152,4 +152,4 @@ Cloudflare 本地运行时地址：`http://127.0.0.1:8787`。另一个终端执�
 
 已验证 Cloudflare 本地运行时的完整联机测试与页面交互。另有 SQLite 重启恢复检查，确认同一身份和笔画在运行时重启后保留。当前安装的本地 workerd 最晚支持 2026-08-06，所以本地模拟使用该日期；云端部署元数据保留建包时的兼容日期 2026-10-18。
 
-2026-10-19 已成功部署到 Cloudflare Workers：[打开画猜俱乐部](https://drawguess-arena.kankandesuyone.workers.dev)。已在公网完成两名玩家的六回合 WebSocket 验证，覆盖画布同步、秘密答案、操作权限、撤销重做、重连、晚加入恢复和最终计分。源码仓库：[Kankandesuyo/drawguess-arena](https://github.com/Kankandesuyo/drawguess-arena)。GitHub 用于保存源码，实际多人游戏由 Cloudflare Workers 与 Durable Objects 提供服务。
+2026-10-19 已成功部署到 Cloudflare Workers：[打开画猜俱乐部](https://drawguess-arena.kankandesuyone.workers.dev)。已在公网完成两名玩家的六回合 WebSocket 验证，覆盖画布同步、秘密答案、操作权限、撤销重做、重连、晚加入恢复和最终计分。公网双浏览器界面流程也已通过：创建、加入、准备、选词、绘画同步、猜对与得分，页面脚本错误为 0。源码仓库：[Kankandesuyo/drawguess-arena](https://github.com/Kankandesuyo/drawguess-arena)。GitHub 用于保存源码，实际多人游戏由 Cloudflare Workers 与 Durable Objects 提供服务。
