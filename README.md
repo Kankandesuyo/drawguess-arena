@@ -1,0 +1,155 @@
+# 画猜俱乐部 · DrawGuess Arena
+
+一个真正支持多人联机的中文你画我猜网站。先完成可玩的 Phase 1，同时实现部分 Phase 2 体验；不需要付费 AI 服务。
+
+## 怎么玩
+
+1. 打开网站，填写昵称；点头像可以切换卡通头像。
+2. 创建房间，把邀请链接或 6 位房间码分享给朋友。
+3. 至少两人加入，其他玩家点“我准备好了”，房主点“开始游戏”。
+4. 画手私下选择一个词，其他人在聊天框猜词。轮到你画时可以使用画笔、橡皮、颜色、粗细、撤销、重做、清空。
+5. 全部猜对或倒计时结束后展示答案，5 秒后自动换人。每轮每人画一次，完成全部轮数后排名。
+
+前 3 个猜对的玩家分别获得 100、80、60 分，之后根据剩余时间获得 20–50 分。每有一人猜对，画手获得 25 分。重复回答不会重复加分。
+
+## 本地启动
+
+需要 Node.js 22 或更高版本。
+
+```powershell
+npm ci
+npm run dev
+```
+
+浏览器打开 http://localhost:3000 。服务监听 `0.0.0.0:3000`。同一个 Wi-Fi 中，朋友需访问运行电脑的局域网 IP，例如 `http://192.168.1.20:3000`；把 `localhost` 发给其他设备无法联机。跨网络游玩需要部署到公网。局域网访问还取决于 Windows 防火墙是否允许该端口；本项目没有更改你的防火墙。
+
+```powershell
+npm run typecheck
+npm test
+npm run build
+npm start
+```
+
+`npm start` 使用生产构建。`npm run test:live` 要求另一终端已经启动服务器，会用真实 Socket.IO 客户端验证完整一局，耗时约 32 秒。若修改端口，可用 `npx cross-env LIVE_URL=http://localhost:3001 npx tsx --test tests/realtime.test.ts`。
+
+## 产品概念与结构
+
+这个产品帮助朋友通过画画和猜词快速开展一场小游戏。成功标准是：两人进入同一房间、同步看到笔画、轮流画画、答案判定准确、完整一局能结算。
+
+浏览器相当于“画板和遥控器”，服务器相当于“裁判”。浏览器发出绘画或猜词请求，服务器验证权限，计算结果，再把属于每个玩家的信息发送给他。
+
+```text
+app/                  Next.js 页面、全局样式
+components/Game.tsx   房间入口、玩家、聊天、选词、结算
+components/Board.tsx  Canvas、触屏画笔、工具栏
+components/store.ts   Zustand 客户端房间状态
+components/ui.tsx     可复用 Button（轻量自建组件）
+shared/types.ts       前后端数据类型与 Zod 输入规则
+server/index.ts       HTTP、Socket.IO、限流、事件路由
+server/game.ts        房间、计分、游戏状态机、计时
+tests/                游戏逻辑测试和真实联机测试
+```
+
+前端使用 Next.js、TypeScript、Tailwind CSS、Framer Motion、Zustand、Lucide、HTML5 Canvas；后端使用 Node.js、TypeScript、Socket.IO、Zod。没有引入完整 shadcn/ui 组件库，按钮由轻量组件实现。Socket.IO 与 Next.js 共用一个端口，降低本地运行和部署复杂度。
+
+状态流：`WAITING → WORD_SELECTION → DRAWING → ROUND_RESULT → ... → GAME_RESULT`。
+
+3 / 5 / 8 轮，60 / 90 / 120 秒，2–12 人和自定义词库可由房主在等待时设置。选词超过 15 秒由服务器自动选择。游戏中加入的玩家本局可以猜词，从下一局开始进入画手队列。在线人数不足 2 人，当前游戏返回等待状态；不会假装单人游戏仍在继续。
+
+## 安全措施
+
+- 玩家公开 ID 和重连密钥分开；密钥仅保存在该标签页的 sessionStorage，不会出现在公共玩家列表或邀请链接。
+- 每位玩家分别生成房间视图。选词和当前答案只发送给画手；结算时才公开答案。猜词者收到词语长度，不会在普通状态里拿到当前答案。
+- 服务器检查每个绘画事件的玩家、游戏阶段和回合编号，拦截观众绘画、旧回合绘画、重复开始和越权修改设置。
+- 分数完全由服务器计算；已经猜对的玩家在绘画阶段不能再发消息，画手也不能打字泄题。
+- Zod 校验输入长度、坐标范围、点数、颜色、粗细；单个 Socket.IO 消息上限 24 KB。聊天每秒最多 3 次，绘画每秒最多 70 批；画布总笔画和点数均有上限。
+- React 按文本渲染聊天，避免把用户输入作为 HTML 执行。提供基础敏感词替换，尚无完整内容审核服务。
+- WebSocket 握手验证网页 Origin。开发环境默认要求和访问主机一致；生产环境可设置 `APP_ORIGIN`。
+- 断线身份保留约 2 分钟；重连重新获取服务器状态和画布，不重新领取积分。无人房间约 30 分钟清理。房主断线会转移房主权限；全员断线后第一个重连者接管。
+
+这是好友房间 MVP，没有账号系统和房间密码。房间码是邀请凭据，知道房间码的人可以加入；它不适合存放敏感信息。内存房间不会跨服务器重启保存，当前仅支持单实例。
+
+## 双浏览器验收
+
+1. 用 Chrome 创建房间，再用 Edge 或无痕窗口输入房间码加入，选择不同昵称。
+2. 第二人准备，房主开始。确认只有画手看到 3 个选词，另一人只看到等待选词。
+3. 选词后画几笔，确认另一窗口同步出现，且另一人不能画。
+4. 猜错不加分；猜对增加 100 分、画手增加 25 分，并显示结算答案。
+5. 等待 5 秒，确认画手轮换。每位玩家每轮画一次，3 轮、两人共 6 次绘画后出现排行榜。
+6. 验证撤销、重做、清空；绘画中让第三人加入，确认恢复画布且不拿到当前答案。
+7. 两人游戏中一人离线会返回等待，这是人数不足的预期行为。三人以上可以检查某个猜词者重连后当前画面恢复。
+
+已运行的自动验收覆盖：答案隐私、错误猜测、重复奖励拦截、非画手权限、旧回合拒绝、笔画同步、撤销重做、晚加入恢复、断线身份恢复、超时、六次绘画整局结算、房主转移、空房间清理。桌面 1505×1045 和手机 390×844 已进行浏览器检查；手机为浏览器模拟，未做真实手机和公网压力测试。
+
+## 部署
+
+需要支持长连接 WebSocket 的 Node.js 服务或 Docker 主机。不能直接作为纯静态网站或仅支持短时函数的服务部署。
+
+```powershell
+docker compose up --build -d
+```
+
+也可以在 Linux/Windows 服务器执行 `npm ci`、`npm run build`、`npm start`，并用进程管理器保持运行。设置环境变量 `PORT=3000`、`HOST=0.0.0.0`、`APP_ORIGIN=https://你的域名`。`.env.example` 提供变量说明；Docker Compose 会读取同目录 `.env`，直接 npm 启动时可由运行环境注入变量。
+
+反向代理需保留 WebSocket 升级头；Nginx 示例：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 120s;
+}
+```
+
+域名与 HTTPS 由服务器环境配置。Docker 配置已提供，当前环境未执行 Docker 部署。
+
+## 后续计划与明确未实现项
+
+第一阶段已完成：好友房间、昵称头像、实时玩家、准备、选词、同步绘画、中文猜词、服务器计时计分、轮换和结算。
+
+第二阶段已完成部分：房间配置、自定义词库、撤销重做、断线恢复、主题与音效、手机布局。后续可增加房间密码、房主踢人、困难模式、渐进字符提示，以及更完善的无障碍弹窗焦点管理。
+
+第三阶段尚未实现：公开匹配、Redis 房间存储与多实例广播、PostgreSQL/Prisma 历史战绩、账号系统、AI 猜图/评分/出题。代码中没有用模拟 AI 玩家或假排行榜冒充这些功能。`GameEngine.rooms` 是当前内存存储边界，接入 Redis 时应增加异步 RoomStore 和跨实例锁，而非仅替换 Map。
+
+## 界面核对与验证记录
+
+设计参考为交付目录中的 `design-concept.png`（内置 Image Gen 生成），实际截图为 `desktop-preview.png`、`mobile-preview.png`。已通过 `view_image` 直接查看概念和最终截图。交互首先在 Codex 内置浏览器中验证；由于本次没有独立 Browser 插件，额外使用 Playwright 对桌面与手机尺寸执行可复现检查。参考图原生尺寸为 1505×1045；桌面浏览器采用同尺寸视口，整页截图包含自然延伸的页脚。
+
+| 比较项 | 核对结果与处理 |
+| --- | --- |
+| 布局 | 保留左侧玩家、中间画布、右侧聊天和底部三步玩法；压缩过高的画布，使首屏比例接近参考 |
+| 配色 | 保留冷白点阵背景、蓝紫主色、深蓝正文与少量青柠点缀 |
+| 字体与控件 | 统一中文系统字体、标题层级、圆角按钮与 Lucide 线性图标，增加聊天和玩家昵称字号 |
+| 内容 | 主标题、玩法标题和主要按钮保留；实际入口增加昵称、连接状态、加入房间动作，空房间显示真实 0 人而非参考图的示例玩家 |
+| 画布与工具栏 | 保留中央等待状态、底部颜色与画笔工具；装饰铅笔使用可缩放 Lucide 图标，头像使用系统 emoji，这是有意的实现差异 |
+| 手机布局 | 390px 下无横向溢出；画布优先，其后是聊天，再是玩家；修复被隐藏的词语提示 |
+| 交互与滚动 | 已修复收到聊天消息时整页自动滚动；帮助、主题、创建、设置保存、退出均已验证 |
+
+上述差异均为真实状态或轻量实现需要，未将参考图当作静态页面交付。没有确认逐像素完全一致；已按参考核对主要视觉系统与核心交互。
+
+最终检查：TypeScript 与生产构建通过，11 项逻辑测试通过；真实联机测试独立执行并通过，覆盖完整六次绘画；npm audit 报告 0 个已知漏洞。桌面和模拟手机没有页面脚本错误，没有框架错误覆盖层；内置浏览器双页面绘画和猜词流程通过。公网延迟、真实手机触摸、并发压力、Docker 环境尚未实测。
+
+## Cloudflare 完整联机部署版本
+
+已新增 Cloudflare 适配，保留原本 Node.js + Socket.IO 本地运行方式。Cloudflare 版使用 Next.js 导出的页面、原生 WebSocket 和每房间独立的 Durable Object；同样复用服务器的选词、权限、计分和状态机。SQLite 存储房间和笔画，Alarms 驱动回合超时，WebSocket 使用可休眠接口。静态文件在构建时 gzip 后打包，响应显式使用 manual 编码以避免二次压缩。
+
+```powershell
+npm ci
+npm run build:cloudflare
+npm run bundle:cloudflare
+npm run typecheck:cloudflare
+npm run dev:cloudflare
+```
+
+Cloudflare 本地运行时地址：`http://127.0.0.1:8787`。另一个终端执行 `npm run test:cloudflare`，会验证真实 WebSocket 下完整六次绘画、秘密答案、权限、恢复画布、重连、撤销重做和最终计分。
+
+`cloudflare/worker.ts` 是云端入口；`components/realtime.ts` 在两种运行方式间切换；`cloudflare/deployment.json` 是 Cloudflare API 上传元数据；`cloudflare/deploy.mjs` 通过官方 API 上传现成 Worker 并启用 workers.dev 地址。没有自动创建付费订阅或购买域名。
+
+发布需要账号拥有 Workers 脚本和 Durable Objects 发布权限。只有 Pages 权限无法发布此实时后端。可以设置本地环境变量 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 后运行 `npm run deploy:cloudflare`。未设置令牌时，部署脚本尝试通过已安装或已缓存的官方 Wrangler 身份管理命令读取已有登录；令牌仅在进程内使用，不打印、不写进代码。不要把令牌提交到仓库或聊天。
+
+已验证 Cloudflare 本地运行时的完整联机测试与页面交互。另有 SQLite 重启恢复检查，确认同一身份和笔画在运行时重启后保留。当前安装的本地 workerd 最晚支持 2026-08-06，所以本地模拟使用该日期；云端部署元数据保留建包时的兼容日期 2026-10-18。
+
+2026-10-19 已成功部署到 Cloudflare Workers：[打开画猜俱乐部](https://drawguess-arena.kankandesuyone.workers.dev)。已在公网完成两名玩家的六回合 WebSocket 验证，覆盖画布同步、秘密答案、操作权限、撤销重做、重连、晚加入恢复和最终计分。源码仓库：[Kankandesuyo/drawguess-arena](https://github.com/Kankandesuyo/drawguess-arena)。GitHub 用于保存源码，实际多人游戏由 Cloudflare Workers 与 Durable Objects 提供服务。

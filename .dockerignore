@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.env
+*.tsbuildinfo
+test-results
+
+.next-cloudflare
+out
+cloudflare/generated-assets.ts
+cloudflare/dist

@@ -1,0 +1,1 @@
+{"name":"drawguess-arena","main_module":"worker.mjs","compatibility_date":"2026-10-18","compatibility_flags":["nodejs_compat"],"bindings":[{"type":"durable_object_namespace","name":"ROOMS","class_name":"DrawRoom"}],"migrations":{"new_tag":"v1","new_sqlite_classes":["DrawRoom"]}}

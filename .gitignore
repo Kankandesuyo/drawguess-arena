@@ -1,0 +1,16 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.env
+test-results/
+
+out/
+.next-cloudflare/
+cloudflare/dist/
+.mf/
+cloudflare/generated-assets.ts
+next-env.d.ts
+
+.env.*
+!.env.example
+.wrangler/

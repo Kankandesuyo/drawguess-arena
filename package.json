@@ -1,0 +1,52 @@
+{
+  "name": "drawguess-arena",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "build": "next build",
+    "start": "cross-env NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:live": "cross-env LIVE_URL=http://localhost:3000 tsx --test tests/realtime.test.ts",
+    "build:cloudflare": "cross-env CLOUDFLARE_BUILD=1 NEXT_PUBLIC_REALTIME_TRANSPORT=cloudflare next build",
+    "bundle:cloudflare": "node cloudflare/build.mjs",
+    "typecheck:cloudflare": "tsc -p cloudflare/tsconfig.json",
+    "dev:cloudflare": "node cloudflare/dev.mjs",
+    "test:cloudflare": "cross-env CF_TEST_URL=http://127.0.0.1:8787 tsx --test tests/cloudflare-realtime.test.ts",
+    "deploy:cloudflare": "node cloudflare/deploy.mjs"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.0.0",
+    "lucide-react": "^0.468.0",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "tailwind-merge": "^3.0.0",
+    "zod": "^3.25.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261018.1",
+    "@playwright/test": "^1.56.0",
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "cross-env": "^10.0.0",
+    "esbuild": "^0.28.2",
+    "miniflare": "^4.20260730.0",
+    "tailwindcss": "^4.1.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "type": "module",
+  "overrides": {
+    "postcss": "^8.5.23",
+    "undici": "^7.29.1",
+    "sharp": "^0.35.5"
+  }
+}
