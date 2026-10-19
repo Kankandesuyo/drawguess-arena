@@ -166,6 +166,20 @@ export default function Game() {
     }
   }, [room?.messages]);
   useEffect(() => {
+    const container = bottom.current?.parentElement;
+    if (!container || !room) return;
+    // Keyboard animation resizes the scroller without adding a new message.
+    // Keep recent messages above the composer throughout that animation.
+    const follow = () => { container.scrollTop = container.scrollHeight; };
+    const observer = new ResizeObserver(follow);
+    observer.observe(container);
+    const frame = requestAnimationFrame(follow);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [room?.code, chatFocused, keyboardOpen]);
+  useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
   function emit(event: string, data: unknown = {}, success?: () => void) {
