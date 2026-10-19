@@ -57,6 +57,8 @@ export default function Game() {
   const [chatFocused, setChatFocused] = useState(false);
   const chatInput = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
+  const chatSending = useRef(false);
+  const sendPointer = useRef<number | null>(null);
   const avatarReturn = useRef<"join" | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const playersRef = useRef<HTMLElement>(null);
@@ -177,6 +179,23 @@ export default function Game() {
       setPending(null);
       if (!a.ok) flash(a.error ?? "操作失败");
       else success?.();
+    });
+  }
+  function sendChat() {
+    const draft = chatInput.current?.value ?? text;
+    if (!draft.trim() || cannotChat || pending || chatSending.current) return;
+    if (!socket?.connected) {
+      flash("连接中，请稍候");
+      return;
+    }
+    // Explicit Send also accepts an IME candidate; Enter still only confirms it.
+    chatSending.current = true;
+    setPending("chat");
+    socket.emit("chat", { text: draft, turn: room?.turn }, (a: Ack) => {
+      chatSending.current = false;
+      setPending(null);
+      if (!a.ok) flash(a.error ?? "发送失败，请重试");
+      else setText((current) => (current === draft ? "" : current));
     });
   }
   function enter(event: "create" | "join") {
@@ -856,7 +875,7 @@ export default function Game() {
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   key={m.id}
-                  className={`message ${m.kind}`}
+                  className={`message kind-${m.kind} ${m.senderId === id ? "message-own" : "message-other"}`}
                 >
                   {m.kind === "chat" && <strong>{m.name}</strong>}
                   <p>{m.text}</p>
@@ -864,25 +883,19 @@ export default function Game() {
               ))}
               <div ref={bottom} />
             </div>
-            {chatFocused && (
-              <div className="composer-help">
+            <div className="composer-help" aria-hidden={!chatFocused}>
                 <span>
                   {room?.phase === "DRAWING"
                     ? "输入答案，回车或点发送"
                     : "房间聊天，回车或点发送"}
                 </span>
                 <span>{text.length}/120</span>
-              </div>
-            )}
+            </div>
             <form
               className="chat-form"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (composing.current || !text.trim() || cannotChat || pending)
-                  return;
-                emit("chat", { text, turn: room?.turn }, () =>
-                  setText((current) => (current === text ? "" : current)),
-                );
+                if (!composing.current) sendChat();
               }}
             >
               <input
@@ -892,7 +905,10 @@ export default function Game() {
                 autoCorrect="off"
                 enterKeyHint="send"
                 onFocus={() => setChatFocused(true)}
-                onBlur={() => setChatFocused(false)}
+                onBlur={() => {
+                  composing.current = false;
+                  setChatFocused(false);
+                }}
                 onCompositionStart={() => {
                   composing.current = true;
                 }}
@@ -927,10 +943,25 @@ export default function Game() {
                 <ChevronDown size={20} />
               </button>
               <Button
+                type="button"
                 aria-label="发送"
                 onPointerDown={(e) => {
-                  if (!cannotChat && text.trim() && !pending)
+                  if (e.isPrimary && e.button === 0 && !cannotChat && text.trim() && !pending) {
+                    sendPointer.current = e.pointerId;
                     e.preventDefault();
+                  }
+                }}
+                onPointerUp={(e) => {
+                  const pressedHere = sendPointer.current === e.pointerId;
+                  sendPointer.current = null;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (pressedHere && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) sendChat();
+                }}
+                onPointerCancel={() => { sendPointer.current = null; }}
+                onPointerLeave={() => { sendPointer.current = null; }}
+                onClick={(e) => {
+                  // Keyboard and assistive activation have no pointer-up.
+                  if (e.detail === 0) sendChat();
                 }}
                 disabled={cannotChat || !text.trim() || !!pending}
               >

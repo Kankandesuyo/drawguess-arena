@@ -7,6 +7,6 @@ export const joinSchema=z.object({name:z.string().trim().min(1).max(16),avatar:a
 export const strokeSchema=z.object({id:z.string().min(1).max(60),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),width:z.number().min(1).max(40),points:z.array(z.object({x:z.number().min(0).max(1),y:z.number().min(0).max(1)})).min(1).max(40)});
 export type Stroke=z.infer<typeof strokeSchema>;
 export type Player={id:string;name:string;avatar:Avatar;score:number;ready:boolean;online:boolean;guessed:boolean};
-export type Message={id:string;name:string;text:string;kind:'system'|'chat'|'success'};
+export type Message={id:string;senderId?:string;name:string;text:string;kind:'system'|'chat'|'success'};
 export type RoomView={code:string;host:string;players:Player[];phase:Phase;settings:Settings;drawer:string;turn:number;totalTurns:number;deadline:number;serverNow:number;hint:string;answer?:string;choices?:string[];strokes:Stroke[];messages:Message[]};
 export const avatars=['🐱','🐼','🦊','🐸','🐰','🐻','🐯','🐨'];

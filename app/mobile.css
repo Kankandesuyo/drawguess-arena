@@ -636,7 +636,7 @@
     padding: 4px 8px;
     margin: 1px 0;
   }
-  .in-room .message.system p {
+  .in-room .message.kind-system p {
     font-size: 11px;
     padding: 1px 0;
   }
@@ -681,7 +681,7 @@
     background: var(--surface);
     flex-shrink: 0;
   }
-  .composer-focused .composer-dismiss {
+  .in-room .composer-dismiss {
     display: grid;
     place-items: center;
     min-width: 36px;
@@ -1055,3 +1055,41 @@
     padding: 8px 14px;
   }
 }
+
+/* Message kind names must never reuse .chat, the panel layout class. */
+.chat .messages { display: block; padding: 10px 12px; }
+.chat .message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: none;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 1.45;
+}
+.chat .message strong { font-size: 12px; line-height: 1.4; margin-bottom: 3px; color: var(--muted); }
+.chat .message p {
+  display: block;
+  width: fit-content;
+  max-width: 88%;
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 12px 12px 12px 3px;
+  white-space: pre-wrap;
+  background: var(--soft);
+}
+.chat .message.message-own { align-items: flex-end; }
+.chat .message-own p { background: var(--blue); color: white; border-radius: 12px 12px 3px 12px; }
+.chat .message.kind-system, .chat .message.kind-success { align-items: center; }
+.chat .message.kind-system p { background: none; color: var(--muted); font-size: 12px; padding: 2px 0; text-align: center; }
+.chat .message.kind-success p { background: #e8f6e8; color: #287239; font-size: 14px; text-align: center; }
+.in-room .chat .panel-title h2 { font-size: 14px; }
+.in-room .composer-help { min-height: 22px; }
+.in-room .composer-help[aria-hidden="true"] { visibility: hidden; }
+.in-room .composer-dismiss { touch-action: manipulation; }
+.in-room .chat-form .button { touch-action: manipulation; transform: none; }
+.in-room .send-label { font-size: 16px; white-space: nowrap; }
+.in-room .chat-form .button { width: 56px; min-width: 56px; }
