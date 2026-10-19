@@ -1166,3 +1166,9 @@
   .composer-focused .in-room .board-overlay h2 { font-size: 16px; margin: 0; }
   .composer-focused .in-room .board-overlay .button { min-height: 36px; padding: 4px 12px; }
 }
+.invite-room-code { display:flex; align-items:center; justify-content:space-between; margin:20px 0; padding:12px 16px; border-radius:12px; background:var(--soft); }
+.invite-room-code span { color:var(--muted); font-size:14px; }
+.invite-room-code strong { color:var(--blue); font-size:26px; letter-spacing:3px; }
+.modal .invite-link-label { display:block; margin-bottom:8px; color:var(--muted); font-size:13px; }
+.modal .invite-url { width:100%; min-height:48px; font-size:16px; margin-bottom:18px; user-select:text; -webkit-user-select:text; }
+.modal .invite-note { margin:14px 0 0; color:var(--muted); font-size:12px; text-align:center; }

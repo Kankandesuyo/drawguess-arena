@@ -49,7 +49,7 @@ export default function Game() {
   const [text, setText] = useState("");
   const [notice, setNotice] = useState("");
   const [modal, setModal] = useState<
-    "help" | "settings" | "join" | "leave" | "avatar" | null
+    "help" | "settings" | "join" | "leave" | "avatar" | "invite" | null
   >(null);
   const [playersOpen, setPlayersOpen] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -59,6 +59,7 @@ export default function Game() {
   const composing = useRef(false);
   const chatSending = useRef(false);
   const sendPointer = useRef<number | null>(null);
+  const inviteLink = useRef<HTMLInputElement>(null);
   const avatarReturn = useRef<"join" | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const playersRef = useRef<HTMLElement>(null);
@@ -82,7 +83,7 @@ export default function Game() {
     if (!room) {
       setPlayersOpen(false);
       setModal((current) =>
-        current === "settings" || current === "leave" ? null : current,
+        current === "settings" || current === "leave" || current === "invite" ? null : current,
       );
     }
   }, [room?.code]);
@@ -282,35 +283,29 @@ export default function Game() {
     if (room) emit("avatar", { avatar: value }, save);
     else save();
   }
-  async function invite() {
+  const inviteUrl = room && typeof location !== "undefined"
+    ? `${location.origin}/?room=${encodeURIComponent(room.code)}` : "";
+  function invite() {
     if (!room) {
       setModal("join");
       return;
     }
-    const url = `${location.origin}/?room=${room.code}`;
-    if (window.matchMedia("(pointer: coarse)").matches && navigator.share) {
-      try {
-        await navigator.share({
-          title: "一起玩你画我猜",
-          text: `加入房间 ${room.code}，一起画画猜词！`,
-          url,
-        });
-        return;
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") return;
-      }
-    }
-    await copyInvite();
+    setPlayersOpen(false);
+    setModal("invite");
   }
-  async function copyInvite() {
+  async function copyInvite(urlOnly = false) {
     if (!room) return;
     try {
       await navigator.clipboard.writeText(
-        `${location.origin}/?room=${room.code}`,
+        urlOnly ? inviteUrl : `来玩你画我猜！\n房间号：${room.code}\n${inviteUrl}\n打开链接，输入昵称即可加入。`,
       );
-      flash("邀请链接已复制，发给朋友就能加入");
+      flash(urlOnly ? "链接已复制，粘贴到微信发给朋友" : "邀请文字已复制，粘贴到微信发给朋友");
     } catch {
-      flash(`房间码：${room.code}`);
+      setPlayersOpen(false);
+      setModal("invite");
+      inviteLink.current?.focus();
+      inviteLink.current?.select();
+      flash("请长按下方网址复制，再粘贴到微信发送");
     }
   }
   const host = room?.host === id;
@@ -631,7 +626,7 @@ export default function Game() {
               </p>
               <Button
                 className="outline"
-                onClick={room ? copyInvite : () => setModal("join")}
+                onClick={room ? () => copyInvite(true) : () => setModal("join")}
               >
                 {room ? <Link size={17} /> : <Plus size={17} />}{" "}
                 {room ? "复制邀请链接" : "输入房间码加入"}
@@ -1050,7 +1045,19 @@ export default function Game() {
             <button className="close" aria-label="关闭" onClick={closeModal}>
               <X size={22} />
             </button>
-            {modal === "avatar" ? (
+            {modal === "invite" && room ? (
+              <>
+                <div className="modal-symbol"><Link size={28} /></div>
+                <h2 id="modal-title">邀请朋友一起玩</h2>
+                <p>复制后粘贴到微信聊天发送，朋友点开网址就能加入。</p>
+                <div className="invite-room-code"><span>房间号</span><strong>{room.code}</strong></div>
+                <label className="invite-link-label" htmlFor="invite-url">邀请链接 · 也可以长按复制</label>
+                <input ref={inviteLink} id="invite-url" className="invite-url" aria-label="邀请链接" readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} />
+                <Button onClick={() => copyInvite()}><Copy size={18} />复制邀请文字</Button>
+                <Button className="outline" onClick={() => copyInvite(true)}>只复制链接</Button>
+                <p className="invite-note">发送网址即可，不需要发送文件。</p>
+              </>
+            ) : modal === "avatar" ? (
               <AvatarEditor
                 value={me?.avatar ?? avatar}
                 pending={!!pending}
