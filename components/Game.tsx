@@ -125,7 +125,7 @@ export default function Game() {
           s.emit("join", p, (a: Ack) => {
             if (a.ok) {
               set({ room: a.room!, id: a.id! });
-              setModal(null);
+              setModal((current) => current === "join" ? null : current);
             } else {
               sessionStorage.removeItem("drawguess-session");
               set({ room: null, id: "" });
