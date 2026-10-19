@@ -63,6 +63,159 @@
 .chat-form {
   scroll-margin-bottom: 20px;
 }
+.composer-dismiss,
+.send-label,
+.composer-help {
+  display: none;
+}
+.custom-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.winner-avatar {
+  display: inline-flex;
+  width: 25px;
+  height: 25px;
+  vertical-align: middle;
+  border-radius: 50%;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-editor-preview {
+  display: flex;
+  justify-content: center;
+  margin: 14px auto;
+}
+.avatar-editor-preview canvas {
+  width: 180px;
+  height: 180px;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.avatar-preview {
+  width: 128px;
+  height: 128px;
+  font-size: 72px;
+  overflow: hidden;
+  border: 3px solid var(--line);
+}
+.avatar-presets {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+  margin: 16px 0;
+}
+.avatar-presets button {
+  position: relative;
+  min-height: 44px;
+  font-size: 26px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.avatar-presets button[aria-pressed="true"] {
+  border-color: var(--blue);
+  background: var(--soft);
+}
+.avatar-presets button svg {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: var(--blue);
+  color: white;
+  border-radius: 50%;
+}
+.avatar-crop-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0;
+}
+.avatar-crop-controls label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.avatar-crop-controls input {
+  flex: 1;
+  width: 100%;
+  min-height: 32px;
+  accent-color: var(--blue);
+  padding: 0;
+  border: 0;
+}
+.avatar-file {
+  display: none;
+}
+.avatar-privacy {
+  font-size: 11px !important;
+  line-height: 1.6 !important;
+}
+.avatar-error {
+  color: #d63a57 !important;
+  background: #fff0f3;
+  padding: 10px;
+  border-radius: 8px;
+}
+.avatar-editor-preview ~ .button {
+  width: 100%;
+}
+.room-share .edit-my-avatar {
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 12px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 650;
+}
+.edit-my-avatar .avatar {
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  font-size: 26px;
+}
+.edit-my-avatar small {
+  display: block;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 10px;
+}
+.edit-my-avatar > svg {
+  margin-left: auto;
+}
+.room-code-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.room-code-line strong {
+  margin-left: auto;
+}
+.join-avatar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--soft);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.join-avatar > svg {
+  margin-left: auto;
+  color: var(--blue);
+}
 @media (max-width: 650px),
   (max-width: 1000px) and (max-height: 500px) and (pointer: coarse) {
   body {
@@ -205,13 +358,19 @@
   }
   .app-shell.playing {
     position: fixed;
-    inset: 0;
+    inset: auto 0 auto 0;
+    top: var(--app-top, 0px);
     height: var(--app-height, 100dvh);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     padding-top: env(safe-area-inset-top);
     background: var(--bg);
+  }
+  html[data-playing="true"],
+  html[data-playing="true"] body {
+    overflow: hidden;
+    overscroll-behavior: none;
   }
   main.in-room {
     margin: 0;
@@ -491,6 +650,8 @@
     background: var(--surface);
   }
   .in-room .chat-form input {
+    flex: 1;
+    min-width: 0;
     height: 44px;
     padding: 9px 10px;
     border-radius: 10px;
@@ -503,13 +664,39 @@
     padding: 8px;
     border-radius: 10px;
   }
+  .in-room .chat-form .button svg {
+    display: none;
+  }
+  .in-room .send-label {
+    display: inline;
+    font-size: 14px;
+  }
+  .in-room .composer-help {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 10px;
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .composer-focused .composer-dismiss {
+    display: grid;
+    place-items: center;
+    min-width: 36px;
+    min-height: 44px;
+    color: var(--muted);
+    border-radius: 9px;
+    background: var(--soft);
+  }
   .in-room .players {
     display: none;
   }
   .in-room .players.players-open {
     display: flex;
     position: fixed;
-    bottom: 0;
+    bottom: var(--app-bottom, 0px);
     left: 0;
     right: 0;
     z-index: 71;
@@ -599,6 +786,9 @@
   .modal-backdrop {
     padding: 12px;
     align-items: flex-end;
+    top: var(--app-top, 0px);
+    bottom: auto;
+    height: var(--app-height, 100dvh);
   }
   .modal {
     width: 100%;
@@ -656,7 +846,14 @@
     bottom: calc(70px + env(safe-area-inset-bottom));
   }
   .keyboard-open.playing .header {
-    height: 44px;
+    display: none;
+  }
+  .keyboard-open main.in-room {
+    padding-bottom: 4px;
+    padding-top: 0;
+  }
+  .keyboard-open.playing {
+    padding-top: 0;
   }
   .keyboard-open .mobile-room-bar {
     min-height: 38px;
@@ -668,16 +865,15 @@
     min-height: 44px;
     padding: 5px 10px;
   }
-  .keyboard-open .status .round,
-  .keyboard-open .status .hint {
+  .keyboard-open .status .round {
     display: none;
   }
   .keyboard-open .in-room .status {
     grid-template-columns: 1fr 1fr;
   }
   .keyboard-open .in-room .chat {
-    flex-basis: 92px;
-    min-height: 92px;
+    flex-basis: 118px;
+    min-height: 118px;
     flex-grow: 0;
   }
   .keyboard-open .in-room .center {
@@ -690,6 +886,32 @@
   }
   .keyboard-open .in-room .chat .panel-title {
     display: none;
+  }
+  .keyboard-open .in-room .messages {
+    font-size: 12px;
+  }
+  .keyboard-open .in-room .chat-form {
+    border-top: 0;
+    padding: 5px 7px;
+  }
+  .keyboard-open .in-room .chat-form input {
+    border-color: var(--blue);
+    outline: none;
+    box-shadow: 0 0 0 2px #5862ed15;
+  }
+  .avatar-presets {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+  }
+  .avatar-presets button {
+    min-height: 44px;
+  }
+  .avatar-editor-preview canvas {
+    width: 160px;
+    height: 160px;
+  }
+  .avatar-crop-controls input {
+    min-height: 36px;
   }
   .keyboard-open .in-room .board-overlay > .pencil-art {
     display: none;

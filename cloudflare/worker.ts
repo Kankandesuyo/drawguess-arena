@@ -1,3 +1,4 @@
+import {avatarSchema} from '../shared/avatar';
 import {DurableObject} from 'cloudflare:workers';
 import {z} from 'zod';
 import {GameEngine,type Room} from '../server/game';
@@ -7,14 +8,20 @@ interface Env {ROOMS:DurableObjectNamespace<DrawRoom>}
 const packetSchema=z.object({id:z.string().max(60),event:z.string().max(30),data:z.unknown()});
 const codeSchema=z.string().regex(/^[A-F0-9]{6}$/);
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
+async function limitedBody(request:Request,limit:number){
+ const reader=request.body?.getReader();if(!reader)return '';
+ const chunks:Uint8Array[]=[];let size=0;
+ while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit){await reader.cancel();return null;}chunks.push(value);}
+ const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return new TextDecoder().decode(bytes);
+}
 export default {async fetch(request:Request,env:Env):Promise<Response>{
  const url=new URL(request.url);const origin=request.headers.get('Origin');
  if(url.pathname.startsWith('/api/')){
   if(origin&&origin!==url.origin)return json({ok:false,error:'不允许跨站请求'},403);
   if(url.pathname==='/api/health')return json({ok:true,runtime:'cloudflare-durable-objects'});
   if(url.pathname==='/api/rooms'&&request.method==='POST'){
-   if(Number(request.headers.get('Content-Length')||0)>2048)return json({ok:false,error:'请求太大'},413);
-   const body=await request.text();if(body.length>2048)return json({ok:false,error:'请求太大'},413);
+   if(Number(request.headers.get('Content-Length')||0)>12288)return json({ok:false,error:'请求太大'},413);
+   const body=await limitedBody(request,12288);if(body===null)return json({ok:false,error:'请求太大'},413);
    let input:unknown;try{input=JSON.parse(body);}catch{return json({ok:false,error:'请求格式不正确'},400);}const parsed=joinSchema.safeParse(input);if(!parsed.success)return json({ok:false,error:'请输入正确的昵称与头像'},400);
    const code=Array.from(crypto.getRandomValues(new Uint8Array(3)),v=>v.toString(16).padStart(2,'0')).join('').toUpperCase();
    return env.ROOMS.getByName(code).fetch(new Request(`https://room.internal/create?code=${code}`,{method:'POST',body:JSON.stringify(parsed.data)}));
@@ -45,7 +52,7 @@ export class DrawRoom extends DurableObject<Env>{
   if(this.ctx.getWebSockets().length>=24)return json({ok:false,error:'房间连接已满'},429);
   const pair=new WebSocketPair();this.ctx.acceptWebSocket(pair[1]);pair[1].serializeAttachment({sid:crypto.randomUUID(),code:this.room.code,rates:{}} satisfies Attachment);return new Response(null,{status:101,webSocket:pair[0]});
  }
- private limited(ws:WebSocket,event:string){const a=ws.deserializeAttachment() as Attachment;const now=Date.now();let rate=a.rates[event];if(!rate||now-rate.at>=1000)rate=a.rates[event]={at:now,n:0};const max=event==='draw'?70:event==='chat'?3:12;if(++rate.n>max)throw Error('操作太快，请稍候');ws.serializeAttachment(a);return a;}
+ private limited(ws:WebSocket,event:string){const a=ws.deserializeAttachment() as Attachment;const now=Date.now();let rate=a.rates[event];if(!rate||now-rate.at>=1000)rate=a.rates[event]={at:now,n:0};const max=event==='draw'?70:event==='chat'?3:event==='avatar'?2:12;if(++rate.n>max)throw Error('操作太快，请稍候');ws.serializeAttachment(a);return a;}
  async webSocketMessage(ws:WebSocket,message:string|ArrayBuffer){let id='';try{
   if(typeof message!=='string'||message.length>24000)throw Error('消息过大或格式错误');
   const p=packetSchema.parse(JSON.parse(message));id=p.id;const a=this.limited(ws,p.event);const r=this.room;if(!r)throw Error('房间已失效，请重新创建');const previousTurn=r.turn;this.engine.tick();let result:Record<string,unknown>={};let rebuild=r.turn!==previousTurn;
@@ -54,6 +61,7 @@ export class DrawRoom extends DurableObject<Env>{
   }else{
    const {player}=this.engine.locate(a.sid);
    switch(p.event){
+    case 'avatar':{const d=z.object({avatar:avatarSchema}).strict().parse(p.data);this.engine.updateAvatar(r,player,d.avatar);break;}
     case 'ready':if(!['WAITING','GAME_RESULT'].includes(r.phase))throw Error('游戏进行中');player.ready=!player.ready;this.dirty=true;break;
     case 'start':this.engine.start(r,player);rebuild=true;break;
     case 'settings':{if(r.host!==player.id||r.phase!=='WAITING')throw Error('仅房主可在等待时修改设置');const s=settingsSchema.parse(p.data);if(s.maxPlayers<r.players.length)throw Error('人数上限小于当前人数');r.settings=s;this.dirty=true;break;}

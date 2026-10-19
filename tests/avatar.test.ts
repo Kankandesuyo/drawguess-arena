@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {avatarSchema,MAX_AVATAR_LENGTH} from '../shared/avatar';
+import {GameEngine} from '../server/game';
+const jpeg=readFileSync(new URL('./fixtures/avatar.jpg',import.meta.url));
+const avatar='data:image/jpeg;base64,'+jpeg.toString('base64');
+test('avatar accepts presets and bounded square JPEG thumbnails',()=>{assert(avatarSchema.safeParse(0).success);assert(avatarSchema.safeParse(7).success);assert(avatarSchema.safeParse(avatar).success);assert(avatar.length>2048);assert(avatar.length<MAX_AVATAR_LENGTH);});
+test('avatar rejects URLs, SVG, forged formats, excessive payloads and invalid preset indices',()=>{for(const value of [-1,8,'https://example.com/avatar.jpg','data:image/svg+xml;base64,PHN2Zy8+','data:image/jpeg;base64,aGVsbG8=',avatar+'a'.repeat(MAX_AVATAR_LENGTH)])assert(!avatarSchema.safeParse(value).success);});
+test('avatar rejects oversized dimensions and non-square thumbnails',()=>{let offset=2;while(offset+4<jpeg.length){const marker=jpeg[offset+1],length=jpeg.readUInt16BE(offset+2);if(marker===192||marker===194)break;offset+=2+length;}const large=Buffer.from(jpeg);large.writeUInt16BE(1024,offset+7);assert(!avatarSchema.safeParse('data:image/jpeg;base64,'+large.toString('base64')).success);const rectangle=Buffer.from(jpeg);rectangle.writeUInt16BE(64,offset+7);assert(!avatarSchema.safeParse('data:image/jpeg;base64,'+rectangle.toString('base64')).success);});
+test('changing avatar keeps identity, score and other players and survives token reconnect',()=>{const engine=new GameEngine();const a=engine.create('A',0,'a');const b=engine.join(a.room.code,'B',1,'b');a.player.score=125;const originalId=a.player.id;engine.updateAvatar(a.room,a.player,avatar);assert.equal(a.player.id,originalId);assert.equal(a.player.score,125);assert.equal(b.player.avatar,1);assert.equal(engine.view(a.room,b.player.id).players.find(p=>p.id===originalId)?.avatar,avatar);engine.leave(a.room,a.player);const restored=engine.join(a.room.code,'A',0,'a-new',a.player.token);assert.equal(restored.player.avatar,avatar);assert.equal(restored.player.id,originalId);assert.equal(restored.player.score,125);assert.throws(()=>engine.updateAvatar(a.room,a.player,'https://example.com/a.jpg'));});

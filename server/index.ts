@@ -1,3 +1,4 @@
+import {avatarSchema} from '../shared/avatar';
 import {createServer} from 'node:http';
 import next from 'next';
 import {Server} from 'socket.io';
@@ -12,6 +13,7 @@ io.on('connection',socket=>{const rates=new Map<string,{at:number;n:number}>();f
  function on(event:string,fn:(data:any)=>unknown,limit=12){socket.on(event,(data,ack)=>{try{limited(event,limit);const result=fn(data);if(typeof ack==='function')ack({ok:true,...(result||{})});}catch(e){const message=e instanceof z.ZodError?'输入格式不正确':e instanceof Error?e.message:'操作失败';if(typeof ack==='function')ack({ok:false,error:message});else socket.emit('notice',message);}});}
  on('create',raw=>{const d=joinSchema.parse(raw);try{engine.locate(socket.id);throw Error('请先离开当前房间');}catch(e){if((e as Error).message!=='请先加入房间')throw e;}if(engine.rooms.size>=500)throw Error('服务器房间已满');const {room,player}=engine.create(d.name,d.avatar,socket.id);return {id:player.id,token:player.token,room:engine.view(room,player.id)};},2);
  on('join',raw=>{const d=joinSchema.parse(raw);try{engine.locate(socket.id);throw Error('请先离开当前房间');}catch(e){if((e as Error).message!=='请先加入房间')throw e;}const code=d.code?.toUpperCase();if(!code)throw Error('请输入房间码');const {room,player}=engine.join(code,d.name,d.avatar,socket.id,d.token);return {id:player.id,token:player.token,room:engine.view(room,player.id)};},3);
+ on('avatar',raw=>{const d=z.object({avatar:avatarSchema}).strict().parse(raw);const {room,player}=engine.locate(socket.id);engine.updateAvatar(room,player,d.avatar);},2);
  on('ready',()=>{const {room,player}=engine.locate(socket.id);if(room.phase!=='WAITING'&&room.phase!=='GAME_RESULT')throw Error('游戏进行中');player.ready=!player.ready;engine.changed(room);});
  on('start',()=>{const {room,player}=engine.locate(socket.id);engine.start(room,player);});
  on('settings',raw=>{const {room,player}=engine.locate(socket.id);if(room.host!==player.id||room.phase!=='WAITING')throw Error('仅房主可在等待时修改设置');const s=settingsSchema.parse(raw);if(s.maxPlayers<room.players.length)throw Error('人数上限小于当前人数');room.settings=s;engine.changed(room);});

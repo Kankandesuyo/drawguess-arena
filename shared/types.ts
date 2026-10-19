@@ -1,11 +1,12 @@
 import { z } from 'zod';
+import {avatarSchema,type Avatar} from './avatar';
 export type Phase='WAITING'|'WORD_SELECTION'|'DRAWING'|'ROUND_RESULT'|'GAME_RESULT';
 export const settingsSchema=z.object({maxPlayers:z.number().int().min(2).max(12),rounds:z.union([z.literal(3),z.literal(5),z.literal(8)]),duration:z.union([z.literal(60),z.literal(90),z.literal(120)]),customWords:z.string().max(1000),public:z.boolean()});
 export type Settings=z.infer<typeof settingsSchema>;
-export const joinSchema=z.object({name:z.string().trim().min(1).max(16),avatar:z.number().int().min(0).max(7),code:z.string().max(6).optional(),token:z.string().uuid().optional()});
+export const joinSchema=z.object({name:z.string().trim().min(1).max(16),avatar:avatarSchema,code:z.string().max(6).optional(),token:z.string().uuid().optional()});
 export const strokeSchema=z.object({id:z.string().min(1).max(60),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),width:z.number().min(1).max(40),points:z.array(z.object({x:z.number().min(0).max(1),y:z.number().min(0).max(1)})).min(1).max(40)});
 export type Stroke=z.infer<typeof strokeSchema>;
-export type Player={id:string;name:string;avatar:number;score:number;ready:boolean;online:boolean;guessed:boolean};
+export type Player={id:string;name:string;avatar:Avatar;score:number;ready:boolean;online:boolean;guessed:boolean};
 export type Message={id:string;name:string;text:string;kind:'system'|'chat'|'success'};
 export type RoomView={code:string;host:string;players:Player[];phase:Phase;settings:Settings;drawer:string;turn:number;totalTurns:number;deadline:number;serverNow:number;hint:string;answer?:string;choices?:string[];strokes:Stroke[];messages:Message[]};
 export const avatars=['🐱','🐼','🦊','🐸','🐰','🐻','🐯','🐨'];

@@ -17,19 +17,22 @@ import {
   LogOut,
   Trophy,
   ArrowRight,
-  Shuffle,
   Volume2,
   VolumeX,
   X,
   Check,
   Crown,
+  ChevronDown,
 } from "lucide-react";
 import type { RoomView, Settings, Stroke } from "../shared/types";
-import { avatars } from "../shared/types";
 import { useGame } from "./store";
 import { Button } from "./ui";
 import Board from "./Board";
 import { useDialog } from "./useDialog";
+import { useVisualViewport } from "./useVisualViewport";
+import { avatarSchema, type Avatar } from "../shared/avatar";
+import AvatarEditor from "./AvatarEditor";
+import AvatarImage from "./AvatarImage";
 type Ack = {
   ok: boolean;
   error?: string;
@@ -41,21 +44,23 @@ export default function Game() {
   const { room, id, connected, set, stroke } = useGame();
   const [socket, setSocket] = useState<RealtimeSocket | null>(null);
   const [name, setName] = useState("灵魂小画家");
-  const [avatar, setAvatar] = useState(0);
+  const [avatar, setAvatar] = useState<Avatar>(0);
   const [code, setCode] = useState("");
   const [text, setText] = useState("");
   const [notice, setNotice] = useState("");
   const [modal, setModal] = useState<
-    "help" | "settings" | "join" | "leave" | null
+    "help" | "settings" | "join" | "leave" | "avatar" | null
   >(null);
   const [playersOpen, setPlayersOpen] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const keyboardOpen = useVisualViewport();
+  const [chatFocused, setChatFocused] = useState(false);
+  const chatInput = useRef<HTMLInputElement>(null);
+  const composing = useRef(false);
+  const avatarReturn = useRef<"join" | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const playersRef = useRef<HTMLElement>(null);
-  useDialog(!!modal, modalRef, () => {
-    if (!pending) setModal(null);
-  });
+  useDialog(!!modal, modalRef, () => closeModal());
   useDialog(playersOpen && !modal, playersRef, () => setPlayersOpen(false));
   const [dark, setDark] = useState(false);
   const [sound, setSound] = useState(false);
@@ -65,27 +70,12 @@ export default function Game() {
   const offset = useRef(0);
   const bottom = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const viewport = window.visualViewport;
-    function resize() {
-      const height = viewport?.height ?? window.innerHeight;
-      document.documentElement.style.setProperty("--app-height", `${height}px`);
-      const editing = ["INPUT", "TEXTAREA"].includes(
-        document.activeElement?.tagName ?? "",
-      );
-      setKeyboardOpen(editing && window.innerHeight - height > 120);
-    }
-    resize();
-    viewport?.addEventListener("resize", resize);
-    window.addEventListener("resize", resize);
-    document.addEventListener("focusin", resize);
-    document.addEventListener("focusout", resize);
+    document.documentElement.dataset.playing = room ? "true" : "false";
+    if (room) window.scrollTo(0, 0);
     return () => {
-      viewport?.removeEventListener("resize", resize);
-      window.removeEventListener("resize", resize);
-      document.removeEventListener("focusin", resize);
-      document.removeEventListener("focusout", resize);
+      delete document.documentElement.dataset.playing;
     };
-  }, []);
+  }, [room?.code]);
   useEffect(() => {
     if (!room) {
       setPlayersOpen(false);
@@ -103,8 +93,9 @@ export default function Game() {
     if (stored) {
       try {
         const p = JSON.parse(stored);
-        setName(p.name);
-        setAvatar(p.avatar);
+        if (typeof p.name === "string") setName(p.name.slice(0, 16));
+        const savedAvatar = avatarSchema.safeParse(p.avatar);
+        if (savedAvatar.success) setAvatar(savedAvatar.data);
       } catch {}
     }
     const c = new URLSearchParams(location.search).get("room");
@@ -223,6 +214,41 @@ export default function Game() {
       },
     );
   }
+  function openAvatar(returnTo: "join" | null = null) {
+    avatarReturn.current = returnTo;
+    setPlayersOpen(false);
+    setModal("avatar");
+  }
+  function closeModal() {
+    if (pending) return;
+    if (modal === "avatar") {
+      setModal(avatarReturn.current);
+      avatarReturn.current = null;
+    } else setModal(null);
+  }
+  function saveAvatar(value: Avatar) {
+    const save = () => {
+      setAvatar(value);
+      try {
+        localStorage.setItem(
+          "drawguess-profile",
+          JSON.stringify({ name, avatar: value }),
+        );
+        const stored = sessionStorage.getItem("drawguess-session");
+        if (stored) {
+          const session = JSON.parse(stored);
+          session.avatar = value;
+          sessionStorage.setItem("drawguess-session", JSON.stringify(session));
+        }
+      } catch {
+        flash("头像已应用，但浏览器未允许保存到本机");
+      }
+      setModal(avatarReturn.current);
+      avatarReturn.current = null;
+    };
+    if (room) emit("avatar", { avatar: value }, save);
+    else save();
+  }
   async function invite() {
     if (!room) {
       setModal("join");
@@ -306,7 +332,7 @@ export default function Game() {
   }
   return (
     <div
-      className={`app-shell ${room ? "playing" : ""} ${keyboardOpen ? "keyboard-open" : ""}`}
+      className={`app-shell ${room ? "playing" : ""} ${keyboardOpen ? "keyboard-open" : ""} ${chatFocused ? "composer-focused" : ""}`}
     >
       <header className="header">
         <div className="brand">
@@ -389,11 +415,11 @@ export default function Game() {
             <div className="mobile-profile">
               <button
                 className="avatar"
-                aria-label="切换我的头像"
-                onClick={() => setAvatar((avatar + 1) % avatars.length)}
+                aria-label="设置我的头像"
+                onClick={() => openAvatar()}
               >
-                {avatars[avatar]}
-                <Shuffle size={14} />
+                <AvatarImage value={avatar} />
+                <Pencil size={14} />
               </button>
               <label htmlFor="mobile-name">
                 朋友会在房间里看到你
@@ -459,11 +485,11 @@ export default function Game() {
               <div className="profile">
                 <button
                   className="avatar"
-                  aria-label="随机头像"
-                  onClick={() => setAvatar((avatar + 1) % avatars.length)}
+                  aria-label="设置我的头像"
+                  onClick={() => openAvatar()}
                 >
-                  {avatars[avatar]}
-                  <Shuffle size={12} />
+                  <AvatarImage value={avatar} />
+                  <Pencil size={12} />
                 </button>
                 <div>
                   <label htmlFor="nickname">你的昵称</label>
@@ -488,7 +514,9 @@ export default function Game() {
                     key={p.id}
                   >
                     <span className="rank">{i + 1}</span>
-                    <span className="avatar">{avatars[p.avatar]}</span>
+                    <span className="avatar">
+                      <AvatarImage value={p.avatar} />
+                    </span>
                     <div className="player-info">
                       <strong>
                         {p.name}
@@ -535,7 +563,18 @@ export default function Game() {
               )}
             </div>
             <div className="room-share">
-              <div>
+              {room && (
+                <button className="edit-my-avatar" onClick={() => openAvatar()}>
+                  <span className="avatar">
+                    <AvatarImage value={me?.avatar ?? avatar} />
+                  </span>
+                  <span>
+                    修改我的头像<small>只会修改你自己的头像</small>
+                  </span>
+                  <ArrowRight size={16} />
+                </button>
+              )}
+              <div className="room-code-line">
                 <span>房间号</span>
                 <strong>{room?.code ?? "未加入"}</strong>
                 {room && (
@@ -751,7 +790,11 @@ export default function Game() {
                       .map((p, i) => (
                         <div key={p.id}>
                           <span>
-                            {["🥇", "🥈", "🥉"][i]} {avatars[p.avatar]} {p.name}
+                            {["🥇", "🥈", "🥉"][i]}{" "}
+                            <span className="winner-avatar">
+                              <AvatarImage value={p.avatar} />
+                            </span>{" "}
+                            {p.name}
                           </span>
                           <strong>{p.score} 分</strong>
                         </div>
@@ -821,21 +864,48 @@ export default function Game() {
               ))}
               <div ref={bottom} />
             </div>
+            {chatFocused && (
+              <div className="composer-help">
+                <span>
+                  {room?.phase === "DRAWING"
+                    ? "输入答案，回车或点发送"
+                    : "房间聊天，回车或点发送"}
+                </span>
+                <span>{text.length}/120</span>
+              </div>
+            )}
             <form
               className="chat-form"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!text.trim() || cannotChat || pending) return;
+                if (composing.current || !text.trim() || cannotChat || pending)
+                  return;
                 emit("chat", { text, turn: room?.turn }, () =>
                   setText((current) => (current === text ? "" : current)),
                 );
               }}
             >
               <input
+                ref={chatInput}
                 aria-label="猜词或聊天"
                 autoComplete="off"
                 autoCorrect="off"
                 enterKeyHint="send"
+                onFocus={() => setChatFocused(true)}
+                onBlur={() => setChatFocused(false)}
+                onCompositionStart={() => {
+                  composing.current = true;
+                }}
+                onCompositionEnd={() => {
+                  composing.current = false;
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    (e.nativeEvent.isComposing || e.keyCode === 229)
+                  )
+                    e.preventDefault();
+                }}
                 placeholder={
                   isDrawer && room?.phase === "DRAWING"
                     ? "画手请用画笔表达"
@@ -848,11 +918,24 @@ export default function Game() {
                 disabled={cannotChat}
                 onChange={(e) => setText(e.target.value)}
               />
+              <button
+                type="button"
+                className="composer-dismiss"
+                aria-label="收起键盘"
+                onClick={() => chatInput.current?.blur()}
+              >
+                <ChevronDown size={20} />
+              </button>
               <Button
                 aria-label="发送"
+                onPointerDown={(e) => {
+                  if (!cannotChat && text.trim() && !pending)
+                    e.preventDefault();
+                }}
                 disabled={cannotChat || !text.trim() || !!pending}
               >
                 <Send size={20} />
+                <span className="send-label">发送</span>
               </Button>
             </form>
           </aside>
@@ -909,7 +992,7 @@ export default function Game() {
         </div>
       )}
       {modal && (
-        <div className="modal-backdrop" onClick={() => setModal(null)}>
+        <div className="modal-backdrop" onClick={closeModal}>
           <div
             ref={modalRef}
             tabIndex={-1}
@@ -919,14 +1002,16 @@ export default function Game() {
             aria-labelledby="modal-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              className="close"
-              aria-label="关闭"
-              onClick={() => setModal(null)}
-            >
+            <button className="close" aria-label="关闭" onClick={closeModal}>
               <X size={22} />
             </button>
-            {modal === "leave" ? (
+            {modal === "avatar" ? (
+              <AvatarEditor
+                value={me?.avatar ?? avatar}
+                pending={!!pending}
+                onSave={saveAvatar}
+              />
+            ) : modal === "leave" ? (
               <>
                 <div className="modal-symbol">
                   <LogOut size={30} />
@@ -967,6 +1052,16 @@ export default function Game() {
                 </div>
                 <h2 id="modal-title">加入朋友的脑洞派对</h2>
                 <p>输入昵称和朋友分享的 6 位房间码</p>
+                <button
+                  className="join-avatar"
+                  onClick={() => openAvatar("join")}
+                >
+                  <span className="avatar">
+                    <AvatarImage value={avatar} />
+                  </span>
+                  <span>设置我的头像</span>
+                  <ArrowRight size={16} />
+                </button>
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
